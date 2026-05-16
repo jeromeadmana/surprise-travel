@@ -44,3 +44,6 @@ app-example
 
 # local planning / scratch docs
 tasks/
+
+# Firebase Android config (per-developer; download from Firebase console)
+google-services.json
