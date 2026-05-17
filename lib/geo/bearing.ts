@@ -42,6 +42,31 @@ export function bearingDeg(from: LatLng, to: LatLng): Bearing {
   return (raw + 360) % 360;
 }
 
+// Destination point given a starting point, initial bearing (degrees),
+// and great-circle distance (km).
+export function destination(
+  start: LatLng,
+  bearing: Bearing,
+  distanceKm: number,
+): LatLng {
+  const dR = distanceKm / EARTH_RADIUS_KM;
+  const lat1 = toRadians(start.lat);
+  const lng1 = toRadians(start.lng);
+  const bRad = toRadians(bearing);
+  const sinLat2 =
+    Math.sin(lat1) * Math.cos(dR) +
+    Math.cos(lat1) * Math.sin(dR) * Math.cos(bRad);
+  const lat2 = Math.asin(sinLat2);
+  const lng2 =
+    lng1 +
+    Math.atan2(
+      Math.sin(bRad) * Math.sin(dR) * Math.cos(lat1),
+      Math.cos(dR) - Math.sin(lat1) * sinLat2,
+    );
+  const lngDeg = ((toDegrees(lng2) + 540) % 360) - 180;
+  return { lat: toDegrees(lat2), lng: lngDeg };
+}
+
 // Half-open wedge [center - 22.5°, center + 22.5°) so every bearing
 // belongs to exactly one of the 8 compass directions.
 export function isInWedge(
@@ -54,4 +79,14 @@ export function isInWedge(
   while (delta > 180) delta -= 360;
   while (delta <= -180) delta += 360;
   return delta >= -WEDGE_HALF_WIDTH && delta < WEDGE_HALF_WIDTH;
+}
+
+export function randomBearingInWedge(
+  direction: DirectionFilter,
+  rng: () => number = Math.random,
+): Bearing {
+  if (direction === 'ALL') return rng() * 360;
+  const center = COMPASS_CENTERS[direction];
+  const offset = (rng() - 0.5) * (WEDGE_HALF_WIDTH * 2);
+  return (center + offset + 360) % 360;
 }

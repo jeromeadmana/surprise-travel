@@ -1,4 +1,10 @@
-import { bearingDeg, distanceKm, isInWedge } from './bearing';
+import {
+  bearingDeg,
+  destination,
+  distanceKm,
+  isInWedge,
+  randomBearingInWedge,
+} from './bearing';
 import type { CompassDirection, LatLng } from './types';
 
 const NAGA: LatLng = { lat: 13.6218, lng: 123.1948 };
@@ -94,6 +100,56 @@ describe('isInWedge', () => {
     for (let b = 0; b < 360; b += 0.5) {
       const matches = dirs.filter((d) => isInWedge(b, d));
       expect(matches).toHaveLength(1);
+    }
+  });
+});
+
+describe('destination', () => {
+  it('returns the same point for zero distance', () => {
+    const d = destination(NAGA, 42, 0);
+    expect(d.lat).toBeCloseTo(NAGA.lat, 6);
+    expect(d.lng).toBeCloseTo(NAGA.lng, 6);
+  });
+
+  it('moves due north when bearing is 0°', () => {
+    const d = destination(NAGA, 0, 10);
+    expect(d.lat).toBeGreaterThan(NAGA.lat);
+    expect(d.lng).toBeCloseTo(NAGA.lng, 4);
+  });
+
+  it('moves due east when bearing is 90°', () => {
+    const d = destination(NAGA, 90, 10);
+    expect(d.lng).toBeGreaterThan(NAGA.lng);
+    expect(d.lat).toBeCloseTo(NAGA.lat, 2);
+  });
+
+  it('round-trip: distance(origin, destination(origin, b, d)) ≈ d', () => {
+    for (const [b, d] of [
+      [0, 5],
+      [45, 10],
+      [137, 25],
+      [270, 60],
+      [330, 80],
+    ] as const) {
+      const p = destination(NAGA, b, d);
+      expect(distanceKm(NAGA, p)).toBeCloseTo(d, 1);
+    }
+  });
+});
+
+describe('randomBearingInWedge', () => {
+  it('returns bearings in [0, 360) for ALL', () => {
+    const rng = () => 0.5;
+    expect(randomBearingInWedge('ALL', rng)).toBe(180);
+  });
+
+  it('always returns a bearing inside the requested wedge', () => {
+    const dirs: CompassDirection[] = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    for (const dir of dirs) {
+      for (let r = 0; r < 1; r += 0.05) {
+        const b = randomBearingInWedge(dir, () => r);
+        expect(isInWedge(b, dir)).toBe(true);
+      }
     }
   });
 });

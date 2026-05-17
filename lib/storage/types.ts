@@ -26,8 +26,8 @@ export const DEFAULT_SETTINGS: Settings = {
     'amusement_park',
     'lodging',
   ],
-  minRating: 4.0,
-  minRatingCount: 10,
+  minRating: 3.5,
+  minRatingCount: 3,
 };
 
 export type Visit = {

@@ -1,10 +1,13 @@
 import { useCallback, useState } from 'react';
 
+import { destination, randomBearingInWedge } from '../geo/bearing';
 import type { LatLng } from '../geo/types';
 import { filterPlaces, type RankedPlace } from '../places/filter';
 import { getPlacesClient } from '../places/google';
 import { sampleWithNoveltyBias } from '../places/sampler';
 import type { Settings } from '../storage/types';
+
+const JITTER_SEARCH_RADIUS_KM = 20;
 
 export type SurpriseState =
   | { kind: 'idle' }
@@ -33,10 +36,15 @@ export function useSurprise({ origin, settings }: UseSurpriseArgs) {
       setState({ kind: 'loading' });
       try {
         const home = settings.homeLocation ?? origin;
-        const radiusMeters = Math.max(1, settings.maxRadiusKm) * 1000;
+        const bearing = randomBearingInWedge(settings.direction);
+        const jitterDistance =
+          settings.minRadiusKm +
+          Math.random() * Math.max(0, settings.maxRadiusKm - settings.minRadiusKm);
+        const searchCenter = destination(home, bearing, jitterDistance);
+        const radiusMeters = JITTER_SEARCH_RADIUS_KM * 1000;
         const client = getPlacesClient();
         const raw = await client.searchNearby({
-          center: home,
+          center: searchCenter,
           radiusMeters,
           includedTypes: settings.includedTypes,
         });
