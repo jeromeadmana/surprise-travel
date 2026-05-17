@@ -13,7 +13,7 @@ export type Settings = {
 
 export const DEFAULT_SETTINGS: Settings = {
   homeLocation: null,
-  minRadiusKm: 10,
+  minRadiusKm: 5,
   maxRadiusKm: 60,
   direction: 'ALL',
   includedTypes: [
@@ -21,7 +21,6 @@ export const DEFAULT_SETTINGS: Settings = {
     'restaurant',
     'tourist_attraction',
     'park',
-    'natural_feature',
     'beach',
     'museum',
     'amusement_park',

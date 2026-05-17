@@ -114,3 +114,17 @@ function normalize(raw: RawPlace): Place | null {
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
+
+let cachedClient: PlacesClient | null = null;
+
+export function getPlacesClient(): PlacesClient {
+  if (cachedClient) return cachedClient;
+  const key = process.env.EXPO_PUBLIC_PLACES_API_KEY;
+  if (!key) {
+    throw new Error(
+      'EXPO_PUBLIC_PLACES_API_KEY is not set — check .env.local or EAS environment variables.',
+    );
+  }
+  cachedClient = new PlacesClient(key);
+  return cachedClient;
+}
