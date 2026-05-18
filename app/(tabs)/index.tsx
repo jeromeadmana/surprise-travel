@@ -20,7 +20,7 @@ import type { RankedPlace } from '@/lib/places/filter';
 export default function HomeScreen() {
   const router = useRouter();
   const { position, status: locStatus, error: locError } = useLocation();
-  const settings = useSettings();
+  const { settings } = useSettings();
   const { state, surprise, again, dismiss } = useSurprise({
     origin: position,
     settings,
