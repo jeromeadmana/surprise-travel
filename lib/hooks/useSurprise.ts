@@ -23,6 +23,15 @@ export type UseSurpriseArgs = {
 
 export function useSurprise({ origin, settings }: UseSurpriseArgs) {
   const [state, setState] = useState<SurpriseState>({ kind: 'idle' });
+  const {
+    homeLocation,
+    direction,
+    minRadiusKm,
+    maxRadiusKm,
+    includedTypes,
+    minRating,
+    minRatingCount,
+  } = settings;
 
   const roll = useCallback(
     async (excludeId?: string) => {
@@ -35,27 +44,26 @@ export function useSurprise({ origin, settings }: UseSurpriseArgs) {
       }
       setState({ kind: 'loading' });
       try {
-        const home = settings.homeLocation ?? origin;
-        const bearing = randomBearingInWedge(settings.direction);
+        const home = homeLocation ?? origin;
+        const bearing = randomBearingInWedge(direction);
         const jitterDistance =
-          settings.minRadiusKm +
-          Math.random() * Math.max(0, settings.maxRadiusKm - settings.minRadiusKm);
+          minRadiusKm + Math.random() * Math.max(0, maxRadiusKm - minRadiusKm);
         const searchCenter = destination(home, bearing, jitterDistance);
         const radiusMeters = JITTER_SEARCH_RADIUS_KM * 1000;
         const client = getPlacesClient();
         const raw = await client.searchNearby({
           center: searchCenter,
           radiusMeters,
-          includedTypes: settings.includedTypes,
+          includedTypes,
         });
         const candidates = filterPlaces(raw, {
           origin: home,
-          minRadiusKm: settings.minRadiusKm,
-          maxRadiusKm: settings.maxRadiusKm,
-          direction: settings.direction,
-          includedTypes: settings.includedTypes,
-          minRating: settings.minRating,
-          minRatingCount: settings.minRatingCount,
+          minRadiusKm,
+          maxRadiusKm,
+          direction,
+          includedTypes,
+          minRating,
+          minRatingCount,
         });
         if (candidates.length === 0) {
           setState({ kind: 'empty' });
@@ -75,7 +83,16 @@ export function useSurprise({ origin, settings }: UseSurpriseArgs) {
         setState({ kind: 'error', message: msg });
       }
     },
-    [origin, settings],
+    [
+      origin,
+      homeLocation,
+      direction,
+      minRadiusKm,
+      maxRadiusKm,
+      includedTypes,
+      minRating,
+      minRatingCount,
+    ],
   );
 
   const surprise = useCallback(() => roll(), [roll]);

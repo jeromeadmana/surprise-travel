@@ -13,8 +13,6 @@ const FIELD_MASK = [
   'places.userRatingCount',
   'places.businessStatus',
   'places.formattedAddress',
-  'places.photos',
-  'places.currentOpeningHours.weekdayDescriptions',
 ].join(',');
 
 const GOOGLE_MAX_RADIUS_M = 50_000;
