@@ -13,6 +13,8 @@ const FIELD_MASK = [
   'places.userRatingCount',
   'places.businessStatus',
   'places.formattedAddress',
+  'places.photos',
+  'places.currentOpeningHours.openNow',
 ].join(',');
 
 const GOOGLE_MAX_RADIUS_M = 50_000;
@@ -38,13 +40,17 @@ type RawPlace = {
   businessStatus?: string;
   formattedAddress?: string;
   photos?: Array<{ name: string }>;
-  currentOpeningHours?: { weekdayDescriptions?: string[] };
+  currentOpeningHours?: { openNow?: boolean };
 };
 
 type RawResponse = { places?: RawPlace[] };
 
 export class PlacesClient {
   constructor(private readonly apiKey: string) {}
+
+  photoUrl(photoName: string, maxWidthPx: number = 400): string {
+    return `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=${maxWidthPx}&key=${this.apiKey}`;
+  }
 
   async searchNearby(params: NearbySearchParams): Promise<Place[]> {
     const body = {
@@ -105,7 +111,7 @@ function normalize(raw: RawPlace): Place | null {
       (raw.businessStatus as BusinessStatus) ?? 'BUSINESS_STATUS_UNSPECIFIED',
     address: raw.formattedAddress,
     photoName: raw.photos?.[0]?.name,
-    openingHoursText: raw.currentOpeningHours?.weekdayDescriptions,
+    openNow: raw.currentOpeningHours?.openNow,
   };
 }
 

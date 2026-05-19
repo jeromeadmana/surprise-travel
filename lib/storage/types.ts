@@ -30,9 +30,10 @@ export const DEFAULT_SETTINGS: Settings = {
   minRatingCount: 3,
 };
 
-export type Visit = {
+export type KnownPlace = {
   placeId: string;
   name: string;
   location: LatLng;
-  visitedAt: number;
+  visitedAt?: number | null;
+  savedAt?: number | null;
 };

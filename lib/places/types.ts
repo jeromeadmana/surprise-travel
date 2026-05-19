@@ -19,5 +19,5 @@ export type Place = {
   businessStatus: BusinessStatus;
   address?: string;
   photoName?: string;
-  openingHoursText?: string[];
+  openNow?: boolean;
 };

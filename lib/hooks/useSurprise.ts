@@ -6,6 +6,7 @@ import { filterPlaces, type RankedPlace } from '../places/filter';
 import { getPlacesClient } from '../places/google';
 import { sampleWithNoveltyBias } from '../places/sampler';
 import type { Settings } from '../storage/types';
+import { useKnownPlaces } from './useKnownPlaces';
 
 const JITTER_SEARCH_RADIUS_KM = 20;
 
@@ -23,6 +24,7 @@ export type UseSurpriseArgs = {
 
 export function useSurprise({ origin, settings }: UseSurpriseArgs) {
   const [state, setState] = useState<SurpriseState>({ kind: 'idle' });
+  const { knownIds } = useKnownPlaces();
   const {
     homeLocation,
     direction,
@@ -70,7 +72,7 @@ export function useSurprise({ origin, settings }: UseSurpriseArgs) {
           return;
         }
         const picked = sampleWithNoveltyBias(candidates, {
-          visitedIds: new Set(),
+          visitedIds: knownIds,
           excludeIds: excludeId ? new Set([excludeId]) : undefined,
         });
         if (!picked) {
@@ -92,6 +94,7 @@ export function useSurprise({ origin, settings }: UseSurpriseArgs) {
       includedTypes,
       minRating,
       minRatingCount,
+      knownIds,
     ],
   );
 
