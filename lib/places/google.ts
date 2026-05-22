@@ -29,6 +29,13 @@ export type NearbySearchParams = {
   rankPreference?: 'POPULARITY' | 'DISTANCE';
 };
 
+export class PlacesApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = 'PlacesApiError';
+  }
+}
+
 type RawPlace = {
   id?: string;
   displayName?: { text?: string };
@@ -85,7 +92,8 @@ export class PlacesClient {
 
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(
+      throw new PlacesApiError(
+        res.status,
         `Places searchNearby failed: HTTP ${res.status} — ${text}`,
       );
     }

@@ -1,11 +1,12 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
   Linking,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -21,14 +22,30 @@ import { useSurprise } from '@/lib/hooks/useSurprise';
 import { estimateDriveMinutes } from '@/lib/places/drive';
 import type { RankedPlace } from '@/lib/places/filter';
 import { getPlacesClient } from '@/lib/places/google';
+import {
+  CATEGORY_LABELS,
+  CATEGORY_TYPES,
+  type PlaceTypeCategory,
+} from '@/lib/places/types';
+
+const CHIP_ORDER: PlaceTypeCategory[] = [
+  'food',
+  'beach',
+  'nature',
+  'culture',
+  'stay',
+  'fun',
+];
 
 export default function HomeScreen() {
   const router = useRouter();
   const { position, status: locStatus, error: locError } = useLocation();
   const { settings } = useSettings();
+  const [activeChip, setActiveChip] = useState<PlaceTypeCategory | null>(null);
   const { state, surprise, again, dismiss } = useSurprise({
     origin: position,
     settings,
+    typeOverride: activeChip ? CATEGORY_TYPES[activeChip] : undefined,
   });
   const known = useKnownPlaces();
   const mapRef = useRef<MapView | null>(null);
@@ -51,6 +68,11 @@ export default function HomeScreen() {
   const onSurprisePress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     surprise();
+  };
+
+  const onChipPress = (chip: PlaceTypeCategory) => {
+    Haptics.selectionAsync().catch(() => {});
+    setActiveChip((prev) => (prev === chip ? null : chip));
   };
 
   const onAgainPress = () => {
@@ -151,6 +173,14 @@ export default function HomeScreen() {
       )}
 
       {!isSuccess && (
+        <ChipRow
+          activeChip={activeChip}
+          onPress={onChipPress}
+          disabled={isLoading}
+        />
+      )}
+
+      {!isSuccess && (
         <TouchableOpacity
           style={[styles.fab, isLoading && styles.fabLoading]}
           onPress={onSurprisePress}
@@ -167,7 +197,7 @@ export default function HomeScreen() {
 
       {state.kind === 'empty' && (
         <Toast tone="info" onDismiss={dismiss}>
-          No places match the current filters near you. Open Settings to widen the radius, pick a different direction, or enable more types.
+          {emptyMessage(activeChip)}
         </Toast>
       )}
 
@@ -191,6 +221,49 @@ export default function HomeScreen() {
       )}
     </View>
   );
+}
+
+function ChipRow({
+  activeChip,
+  onPress,
+  disabled,
+}: {
+  activeChip: PlaceTypeCategory | null;
+  onPress: (chip: PlaceTypeCategory) => void;
+  disabled: boolean;
+}) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.chipScroll}
+      contentContainerStyle={styles.chipScrollContent}
+      pointerEvents={disabled ? 'none' : 'auto'}
+    >
+      {CHIP_ORDER.map((chip) => {
+        const isActive = activeChip === chip;
+        return (
+          <TouchableOpacity
+            key={chip}
+            style={[styles.chip, isActive && styles.chipActive]}
+            onPress={() => onPress(chip)}
+            disabled={disabled}
+          >
+            <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
+              {CATEGORY_LABELS[chip]}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+function emptyMessage(activeChip: PlaceTypeCategory | null): string {
+  if (activeChip) {
+    return `No ${CATEGORY_LABELS[activeChip].replace(/^\S+\s/, '').toLowerCase()} places match the current filters near you. Try clearing the chip, widening the radius in Settings, or picking 'All' directions.`;
+  }
+  return "No places match the current filters near you. Try widening the radius in Settings or picking 'All' directions.";
 }
 
 function Toast({
@@ -395,6 +468,41 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     minWidth: 140,
     alignItems: 'center',
+  },
+  chipScroll: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 96,
+    maxHeight: 44,
+  },
+  chipScrollContent: {
+    paddingHorizontal: 12,
+    gap: 8,
+    alignItems: 'center',
+  },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+  },
+  chipActive: {
+    backgroundColor: '#0a84ff',
+  },
+  chipText: {
+    fontSize: 14,
+    color: '#222',
+    fontWeight: '500',
+  },
+  chipTextActive: {
+    color: 'white',
+    fontWeight: '600',
   },
   fabLoading: { opacity: 0.75 },
   fabText: { color: 'white', fontSize: 16, fontWeight: '600' },
