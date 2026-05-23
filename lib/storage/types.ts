@@ -3,6 +3,7 @@ import type { PlaceType } from '../places/types';
 
 export type Settings = {
   homeLocation: LatLng | null;
+  homeName: string | null;
   minRadiusKm: number;
   maxRadiusKm: number;
   direction: DirectionFilter;
@@ -13,6 +14,7 @@ export type Settings = {
 
 export const DEFAULT_SETTINGS: Settings = {
   homeLocation: null,
+  homeName: null,
   minRadiusKm: 5,
   maxRadiusKm: 60,
   direction: 'ALL',

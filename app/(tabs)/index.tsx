@@ -50,6 +50,9 @@ export default function HomeScreen() {
   const known = useKnownPlaces();
   const mapRef = useRef<MapView | null>(null);
 
+  const anchorLat = settings.homeLocation?.lat ?? position?.lat ?? null;
+  const anchorLng = settings.homeLocation?.lng ?? position?.lng ?? null;
+
   useEffect(() => {
     if (state.kind === 'success' && mapRef.current) {
       mapRef.current.animateToRegion(
@@ -64,6 +67,20 @@ export default function HomeScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     }
   }, [state]);
+
+  useEffect(() => {
+    if (state.kind === 'success' || !mapRef.current) return;
+    if (anchorLat == null || anchorLng == null) return;
+    mapRef.current.animateToRegion(
+      {
+        latitude: anchorLat,
+        longitude: anchorLng,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      },
+      500,
+    );
+  }, [anchorLat, anchorLng, state.kind]);
 
   const onSurprisePress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -133,8 +150,8 @@ export default function HomeScreen() {
         style={StyleSheet.absoluteFillObject}
         provider={PROVIDER_GOOGLE}
         initialRegion={{
-          latitude: position.lat,
-          longitude: position.lng,
+          latitude: settings.homeLocation?.lat ?? position.lat,
+          longitude: settings.homeLocation?.lng ?? position.lng,
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         }}
@@ -171,6 +188,20 @@ export default function HomeScreen() {
           <MaterialIcons name="settings" size={24} color="#222" />
         </TouchableOpacity>
       )}
+
+      {!isSuccess && settings.homeLocation ? (
+        <TouchableOpacity
+          style={styles.homePill}
+          onPress={() => router.push('/settings')}
+          activeOpacity={0.8}
+          accessibilityLabel="Home location"
+        >
+          <MaterialIcons name="place" size={14} color="#0a84ff" />
+          <Text style={styles.homePillText} numberOfLines={1}>
+            From: {settings.homeName ?? `${settings.homeLocation.lat.toFixed(3)}, ${settings.homeLocation.lng.toFixed(3)}`}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
 
       {!isSuccess && (
         <ChipRow
@@ -346,12 +377,20 @@ function ResultCard({
           />
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.iconChip, styles.iconChipRight]}
+          style={[styles.iconChip, styles.iconChipRightInner]}
           onPress={onShare}
           hitSlop={8}
           accessibilityLabel="Share"
         >
           <MaterialIcons name="share" size={20} color="#444" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.iconChip, styles.iconChipRightOuter]}
+          onPress={onClose}
+          hitSlop={8}
+          accessibilityLabel="Close"
+        >
+          <MaterialIcons name="close" size={20} color="#444" />
         </TouchableOpacity>
       </View>
 
@@ -396,14 +435,14 @@ function ResultCard({
           </TouchableOpacity>
         </View>
 
-        <View style={styles.cardFooter}>
-          <TouchableOpacity onPress={onAgain} hitSlop={8}>
-            <Text style={styles.footerLink}>Surprise me again</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onClose} hitSlop={8}>
-            <Text style={styles.footerLinkMuted}>Close</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={styles.againBtn}
+          onPress={onAgain}
+          accessibilityLabel="Surprise me again"
+        >
+          <MaterialIcons name="refresh" size={20} color="white" />
+          <Text style={styles.againBtnText}>Surprise me again</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -557,7 +596,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   iconChipLeft: { left: 8 },
-  iconChipRight: { right: 8 },
+  iconChipRightInner: { right: 48 },
+  iconChipRightOuter: { right: 8 },
   cardBody: { padding: 14, gap: 6 },
   resultName: { fontSize: 18, fontWeight: '700', color: '#111' },
   metaRow: {
@@ -587,13 +627,17 @@ const styles = StyleSheet.create({
   btnPrimaryText: { color: 'white', fontWeight: '600' },
   btnSecondary: { backgroundColor: '#eef0f3' },
   btnSecondaryText: { color: '#111', fontWeight: '600' },
-  cardFooter: {
+  againBtn: {
+    marginTop: 10,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingTop: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0a84ff',
+    paddingVertical: 14,
+    borderRadius: 10,
+    gap: 8,
   },
-  footerLink: { color: '#0a84ff', fontSize: 13, fontWeight: '500' },
-  footerLinkMuted: { color: '#888', fontSize: 13 },
+  againBtnText: { color: 'white', fontWeight: '600', fontSize: 15 },
   visitedDot: {
     width: 12,
     height: 12,
@@ -602,4 +646,23 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'white',
   },
+  homePill: {
+    position: 'absolute',
+    top: 56,
+    left: 16,
+    maxWidth: 220,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+  },
+  homePillText: { fontSize: 12, color: '#222', fontWeight: '500' },
 });

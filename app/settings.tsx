@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -13,6 +14,7 @@ import {
 import type { DirectionFilter } from '@/lib/geo/types';
 import { useLocation } from '@/lib/hooks/useLocation';
 import { useSettings } from '@/lib/hooks/useSettings';
+import { getPlacesClient, type PlaceSuggestion } from '@/lib/places/google';
 import type { PlaceType } from '@/lib/places/types';
 import { DEFAULT_SETTINGS } from '@/lib/storage/types';
 
@@ -36,6 +38,7 @@ const DIRECTION_GRID: DirectionFilter[][] = [
 export default function SettingsScreen() {
   const { settings, loaded, update } = useSettings();
   const { position } = useLocation();
+  const [manualMode, setManualMode] = useState(false);
 
   if (!loaded) {
     return (
@@ -45,14 +48,23 @@ export default function SettingsScreen() {
     );
   }
 
-  const useCurrentLocation = settings.homeLocation == null;
+  const showManual = manualMode || settings.homeLocation != null;
 
   const onToggleUseCurrent = (useCurrent: boolean) => {
     if (useCurrent) {
-      update({ homeLocation: null });
-    } else if (position) {
-      update({ homeLocation: position });
+      setManualMode(false);
+      update({ homeLocation: null, homeName: null });
+    } else {
+      setManualMode(true);
     }
+  };
+
+  const onPickPlace = (place: PlaceSuggestion) => {
+    update({ homeLocation: place.location, homeName: place.name });
+  };
+
+  const onClearHome = () => {
+    update({ homeLocation: null, homeName: null });
   };
 
   const onMinRadius = (v: number) => {
@@ -84,12 +96,15 @@ export default function SettingsScreen() {
     >
       <Section title="Home location">
         <Row label="Use current location">
-          <Switch value={useCurrentLocation} onValueChange={onToggleUseCurrent} />
+          <Switch value={!showManual} onValueChange={onToggleUseCurrent} />
         </Row>
-        {!useCurrentLocation && settings.homeLocation && (
-          <LatLngEditor
-            value={settings.homeLocation}
-            onChange={(loc) => update({ homeLocation: loc })}
+        {showManual && (
+          <PlaceSearch
+            currentHomeName={settings.homeName}
+            currentHomeLocation={settings.homeLocation}
+            bias={position}
+            onPick={onPickPlace}
+            onClear={onClearHome}
           />
         )}
       </Section>
@@ -294,63 +309,117 @@ function Checkbox({
   );
 }
 
-function LatLngEditor({
-  value,
-  onChange,
+function PlaceSearch({
+  currentHomeName,
+  currentHomeLocation,
+  bias,
+  onPick,
+  onClear,
 }: {
-  value: { lat: number; lng: number };
-  onChange: (v: { lat: number; lng: number }) => void;
+  currentHomeName: string | null;
+  currentHomeLocation: { lat: number; lng: number } | null;
+  bias: { lat: number; lng: number } | null;
+  onPick: (place: PlaceSuggestion) => void;
+  onClear: () => void;
 }) {
-  const [latText, setLatText] = useState(String(value.lat));
-  const [lngText, setLngText] = useState(String(value.lng));
-  const lastValueRef = useRef(value);
+  const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    if (
-      value.lat !== lastValueRef.current.lat ||
-      value.lng !== lastValueRef.current.lng
-    ) {
-      const latNum = parseFloat(latText);
-      const lngNum = parseFloat(lngText);
-      if (latNum !== value.lat || lngNum !== value.lng) {
-        setLatText(String(value.lat));
-        setLngText(String(value.lng));
-      }
+  const onChangeQuery = (text: string) => {
+    setQuery(text);
+    setError(null);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (text.trim().length < 2) {
+      setSuggestions([]);
+      return;
     }
-    lastValueRef.current = value;
-  }, [value, latText, lngText]);
-
-  const onLatChange = (text: string) => {
-    setLatText(text);
-    const v = parseFloat(text);
-    if (Number.isFinite(v)) onChange({ ...value, lat: v });
+    timerRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const client = getPlacesClient();
+        const results = await client.searchText(text.trim(), bias ?? undefined);
+        setSuggestions(results);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(
+          /network request failed/i.test(msg)
+            ? 'No internet — connect to search for places.'
+            : 'Search failed. Try again.',
+        );
+        setSuggestions([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 400);
   };
 
-  const onLngChange = (text: string) => {
-    setLngText(text);
-    const v = parseFloat(text);
-    if (Number.isFinite(v)) onChange({ ...value, lng: v });
+  const pick = (place: PlaceSuggestion) => {
+    onPick(place);
+    setQuery('');
+    setSuggestions([]);
+    setError(null);
   };
 
   return (
-    <>
-      <Row label="Latitude">
+    <View style={{ gap: 8 }}>
+      {currentHomeLocation ? (
+        <View style={styles.currentHomeBox}>
+          <View style={styles.currentHomeText}>
+            <Text style={styles.currentHomeLabel}>Current home</Text>
+            <Text style={styles.currentHomeName} numberOfLines={2}>
+              {currentHomeName ?? `${currentHomeLocation.lat.toFixed(4)}, ${currentHomeLocation.lng.toFixed(4)}`}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={onClear} hitSlop={8} style={styles.clearBtn}>
+            <MaterialIcons name="close" size={20} color="#666" />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      <View style={styles.searchBox}>
+        <MaterialIcons name="search" size={20} color="#888" />
         <TextInput
-          style={styles.input}
-          keyboardType="numbers-and-punctuation"
-          value={latText}
-          onChangeText={onLatChange}
+          style={styles.searchInput}
+          placeholder="Search for a place…"
+          placeholderTextColor="#999"
+          value={query}
+          onChangeText={onChangeQuery}
+          autoCorrect={false}
+          autoCapitalize="words"
+          returnKeyType="search"
         />
-      </Row>
-      <Row label="Longitude">
-        <TextInput
-          style={styles.input}
-          keyboardType="numbers-and-punctuation"
-          value={lngText}
-          onChangeText={onLngChange}
-        />
-      </Row>
-    </>
+        {searching ? <ActivityIndicator size="small" /> : null}
+      </View>
+
+      {error ? <Text style={styles.searchError}>{error}</Text> : null}
+
+      {suggestions.length > 0 ? (
+        <View style={styles.suggestionList}>
+          {suggestions.map((s) => (
+            <TouchableOpacity
+              key={s.id}
+              style={styles.suggestionRow}
+              onPress={() => pick(s)}
+            >
+              <MaterialIcons name="place" size={18} color="#0a84ff" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.suggestionName} numberOfLines={1}>
+                  {s.name}
+                </Text>
+                {s.address ? (
+                  <Text style={styles.suggestionAddress} numberOfLines={1}>
+                    {s.address}
+                  </Text>
+                ) : null}
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -464,4 +533,53 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   resetBtnText: { color: '#b00', fontSize: 15, fontWeight: '600' },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#d4d8df',
+    borderRadius: 8,
+    backgroundColor: 'white',
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#111',
+    paddingVertical: 4,
+  },
+  searchError: { fontSize: 13, color: '#b00' },
+  suggestionList: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e4e7eb',
+    overflow: 'hidden',
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#eee',
+  },
+  suggestionName: { fontSize: 14, color: '#111', fontWeight: '500' },
+  suggestionAddress: { fontSize: 12, color: '#888', marginTop: 2 },
+  currentHomeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#e9f1ff',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  currentHomeText: { flex: 1 },
+  currentHomeLabel: { fontSize: 11, color: '#0a84ff', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  currentHomeName: { fontSize: 14, color: '#111', fontWeight: '500', marginTop: 2 },
+  clearBtn: { padding: 4 },
 });

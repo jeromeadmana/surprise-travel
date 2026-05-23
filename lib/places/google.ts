@@ -52,11 +52,80 @@ type RawPlace = {
 
 type RawResponse = { places?: RawPlace[] };
 
+export type PlaceSuggestion = {
+  id: string;
+  name: string;
+  location: LatLng;
+  address?: string;
+};
+
+const SEARCH_TEXT_ENDPOINT = 'https://places.googleapis.com/v1/places:searchText';
+const SEARCH_TEXT_FIELD_MASK = [
+  'places.id',
+  'places.displayName',
+  'places.location',
+  'places.formattedAddress',
+].join(',');
+
 export class PlacesClient {
   constructor(private readonly apiKey: string) {}
 
   photoUrl(photoName: string, maxWidthPx: number = 400): string {
     return `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=${maxWidthPx}&key=${this.apiKey}`;
+  }
+
+  async searchText(
+    query: string,
+    bias?: LatLng,
+    maxResults: number = 5,
+  ): Promise<PlaceSuggestion[]> {
+    const body: Record<string, unknown> = {
+      textQuery: query,
+      maxResultCount: maxResults,
+    };
+    if (bias) {
+      body.locationBias = {
+        circle: {
+          center: { latitude: bias.lat, longitude: bias.lng },
+          radius: 50000,
+        },
+      };
+    }
+    const res = await fetch(SEARCH_TEXT_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': this.apiKey,
+        'X-Goog-FieldMask': SEARCH_TEXT_FIELD_MASK,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new PlacesApiError(
+        res.status,
+        `Places searchText failed: HTTP ${res.status} — ${text}`,
+      );
+    }
+    const data = (await res.json()) as {
+      places?: Array<{
+        id?: string;
+        displayName?: { text?: string };
+        location?: { latitude: number; longitude: number };
+        formattedAddress?: string;
+      }>;
+    };
+    return (data.places ?? [])
+      .map((p): PlaceSuggestion | null => {
+        if (!p.id || !p.location) return null;
+        return {
+          id: p.id,
+          name: p.displayName?.text ?? '(unnamed)',
+          location: { lat: p.location.latitude, lng: p.location.longitude },
+          address: p.formattedAddress,
+        };
+      })
+      .filter((p): p is PlaceSuggestion => p !== null);
   }
 
   async searchNearby(params: NearbySearchParams): Promise<Place[]> {
