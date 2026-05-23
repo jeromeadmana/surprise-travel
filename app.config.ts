@@ -18,7 +18,7 @@ export default (): ExpoConfig => ({
     googleServicesFile:
       process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
     adaptiveIcon: {
-      backgroundColor: '#E6F4FE',
+      backgroundColor: '#0d192e',
       foregroundImage: './assets/images/android-icon-foreground.png',
       backgroundImage: './assets/images/android-icon-background.png',
       monochromeImage: './assets/images/android-icon-monochrome.png',
@@ -43,8 +43,8 @@ export default (): ExpoConfig => ({
         image: './assets/images/splash-icon.png',
         imageWidth: 200,
         resizeMode: 'contain',
-        backgroundColor: '#ffffff',
-        dark: { backgroundColor: '#000000' },
+        backgroundColor: '#1c153d',
+        dark: { backgroundColor: '#1c153d' },
       },
     ],
     '@react-native-firebase/app',
