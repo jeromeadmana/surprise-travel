@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   Image,
   Linking,
   ScrollView,
@@ -11,9 +12,11 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useKnownPlaces } from '@/lib/hooks/useKnownPlaces';
 import { useLocation } from '@/lib/hooks/useLocation';
@@ -39,9 +42,11 @@ const CHIP_ORDER: PlaceTypeCategory[] = [
 
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { position, status: locStatus, error: locError } = useLocation();
   const { settings } = useSettings();
   const [activeChip, setActiveChip] = useState<PlaceTypeCategory | null>(null);
+  const [menuOpen, setMenuOpen] = useState(true);
   const { state, surprise, again, dismiss } = useSurprise({
     origin: position,
     settings,
@@ -52,9 +57,11 @@ export default function HomeScreen() {
 
   const anchorLat = settings.homeLocation?.lat ?? position?.lat ?? null;
   const anchorLng = settings.homeLocation?.lng ?? position?.lng ?? null;
+  const isSuccess = state.kind === 'success';
+  const isLoading = state.kind === 'loading';
 
   useEffect(() => {
-    if (state.kind === 'success' && mapRef.current) {
+    if (isSuccess && mapRef.current && state.kind === 'success') {
       mapRef.current.animateToRegion(
         {
           latitude: state.place.location.lat,
@@ -66,10 +73,10 @@ export default function HomeScreen() {
       );
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     }
-  }, [state]);
+  }, [state, isSuccess]);
 
   useEffect(() => {
-    if (state.kind === 'success' || !mapRef.current) return;
+    if (isSuccess || !mapRef.current) return;
     if (anchorLat == null || anchorLng == null) return;
     mapRef.current.animateToRegion(
       {
@@ -80,16 +87,27 @@ export default function HomeScreen() {
       },
       500,
     );
-  }, [anchorLat, anchorLng, state.kind]);
+  }, [anchorLat, anchorLng, isSuccess]);
+
+  useEffect(() => {
+    const handler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (isSuccess) {
+        dismiss();
+        setMenuOpen(true);
+        return true;
+      }
+      if (menuOpen) {
+        setMenuOpen(false);
+        return true;
+      }
+      return false;
+    });
+    return () => handler.remove();
+  }, [isSuccess, menuOpen, dismiss]);
 
   const onSurprisePress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     surprise();
-  };
-
-  const onChipPress = (chip: PlaceTypeCategory) => {
-    Haptics.selectionAsync().catch(() => {});
-    setActiveChip((prev) => (prev === chip ? null : chip));
   };
 
   const onAgainPress = () => {
@@ -105,6 +123,12 @@ export default function HomeScreen() {
       location: place.location,
     });
     dismiss();
+    setMenuOpen(true);
+  };
+
+  const onResultClose = () => {
+    dismiss();
+    setMenuOpen(true);
   };
 
   const onHeartPress = (place: RankedPlace) => {
@@ -118,6 +142,11 @@ export default function HomeScreen() {
         location: place.location,
       });
     }
+  };
+
+  const onChipPress = (chip: PlaceTypeCategory) => {
+    Haptics.selectionAsync().catch(() => {});
+    setActiveChip((prev) => (prev === chip ? null : chip));
   };
 
   if (locStatus === 'requesting') {
@@ -139,9 +168,6 @@ export default function HomeScreen() {
       </View>
     );
   }
-
-  const isLoading = state.kind === 'loading';
-  const isSuccess = state.kind === 'success';
 
   return (
     <View style={styles.root}>
@@ -179,61 +205,46 @@ export default function HomeScreen() {
         )}
       </MapView>
 
-      {!isSuccess && (
-        <TouchableOpacity
-          style={styles.gear}
-          onPress={() => router.push('/settings')}
-          accessibilityLabel="Settings"
-        >
-          <MaterialIcons name="settings" size={24} color="#222" />
-        </TouchableOpacity>
-      )}
+      <Header
+        insets={insets}
+        menuOpen={menuOpen && !isSuccess}
+        onToggle={() => {
+          if (isSuccess) {
+            dismiss();
+            setMenuOpen(true);
+            return;
+          }
+          setMenuOpen((v) => !v);
+        }}
+      />
 
-      {!isSuccess && settings.homeLocation ? (
-        <TouchableOpacity
-          style={styles.homePill}
-          onPress={() => router.push('/settings')}
-          activeOpacity={0.8}
-          accessibilityLabel="Home location"
-        >
-          <MaterialIcons name="place" size={14} color="#0a84ff" />
-          <Text style={styles.homePillText} numberOfLines={1}>
-            From: {settings.homeName ?? `${settings.homeLocation.lat.toFixed(3)}, ${settings.homeLocation.lng.toFixed(3)}`}
-          </Text>
-        </TouchableOpacity>
-      ) : null}
-
-      {!isSuccess && (
-        <ChipRow
-          activeChip={activeChip}
-          onPress={onChipPress}
-          disabled={isLoading}
-        />
-      )}
-
-      {!isSuccess && (
-        <TouchableOpacity
-          style={[styles.fab, isLoading && styles.fabLoading]}
-          onPress={onSurprisePress}
-          disabled={isLoading}
-          accessibilityLabel="Surprise me"
-        >
-          {isLoading ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Text style={styles.fabText}>Surprise me</Text>
-          )}
-        </TouchableOpacity>
+      {menuOpen && !isSuccess && (
+        <>
+          <TouchableWithoutFeedback onPress={() => setMenuOpen(false)}>
+            <View style={styles.backdrop} />
+          </TouchableWithoutFeedback>
+          <MenuCard
+            activeChip={activeChip}
+            onChipPress={onChipPress}
+            onSurprisePress={onSurprisePress}
+            isLoading={isLoading}
+            homeName={settings.homeName}
+            homeLocation={settings.homeLocation}
+            onHistory={() => router.push('/history')}
+            onSettings={() => router.push('/settings')}
+            onClose={() => setMenuOpen(false)}
+          />
+        </>
       )}
 
       {state.kind === 'empty' && (
-        <Toast tone="info" onDismiss={dismiss}>
+        <Toast tone="info" onDismiss={dismiss} bottomInset={insets.bottom}>
           {emptyMessage(activeChip)}
         </Toast>
       )}
 
       {state.kind === 'error' && (
-        <Toast tone="error" onDismiss={dismiss}>
+        <Toast tone="error" onDismiss={dismiss} bottomInset={insets.bottom}>
           {state.message}
         </Toast>
       )}
@@ -242,51 +253,181 @@ export default function HomeScreen() {
         <ResultCard
           place={state.place}
           isSaved={known.savedIds.has(state.place.id)}
+          bottomInset={insets.bottom}
           onHeart={() => onHeartPress(state.place)}
           onShare={() => shareViaSheet(state.place)}
           onOpenMaps={() => openInMaps(state.place)}
           onIllGo={() => onIllGoPress(state.place)}
           onAgain={onAgainPress}
-          onClose={dismiss}
+          onClose={onResultClose}
         />
       )}
     </View>
   );
 }
 
-function ChipRow({
-  activeChip,
-  onPress,
-  disabled,
+function Header({
+  insets,
+  menuOpen,
+  onToggle,
 }: {
-  activeChip: PlaceTypeCategory | null;
-  onPress: (chip: PlaceTypeCategory) => void;
-  disabled: boolean;
+  insets: { top: number };
+  menuOpen: boolean;
+  onToggle: () => void;
 }) {
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={styles.chipScroll}
-      contentContainerStyle={styles.chipScrollContent}
-      pointerEvents={disabled ? 'none' : 'auto'}
+    <View
+      style={[styles.header, { paddingTop: insets.top, height: 56 + insets.top }]}
     >
-      {CHIP_ORDER.map((chip) => {
-        const isActive = activeChip === chip;
-        return (
-          <TouchableOpacity
-            key={chip}
-            style={[styles.chip, isActive && styles.chipActive]}
-            onPress={() => onPress(chip)}
-            disabled={disabled}
-          >
-            <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
-              {CATEGORY_LABELS[chip]}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
-    </ScrollView>
+      <Image
+        source={require('@/assets/images/icon.png')}
+        style={styles.headerLogo}
+      />
+      <Text style={styles.headerTitle}>Surprise Visit</Text>
+      <View style={styles.headerSpacer} />
+      <TouchableOpacity
+        style={styles.headerMenuBtn}
+        onPress={onToggle}
+        hitSlop={8}
+        accessibilityLabel={menuOpen ? 'Close menu' : 'Open menu'}
+      >
+        <MaterialIcons
+          name={menuOpen ? 'close' : 'menu'}
+          size={24}
+          color="#0d192e"
+        />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function MenuCard({
+  activeChip,
+  onChipPress,
+  onSurprisePress,
+  isLoading,
+  homeName,
+  homeLocation,
+  onHistory,
+  onSettings,
+  onClose,
+}: {
+  activeChip: PlaceTypeCategory | null;
+  onChipPress: (c: PlaceTypeCategory) => void;
+  onSurprisePress: () => void;
+  isLoading: boolean;
+  homeName: string | null;
+  homeLocation: { lat: number; lng: number } | null;
+  onHistory: () => void;
+  onSettings: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <View style={styles.menuCard}>
+      <TouchableOpacity
+        style={styles.menuClose}
+        onPress={onClose}
+        hitSlop={10}
+        accessibilityLabel="Close menu"
+      >
+        <MaterialIcons name="close" size={20} color="#444" />
+      </TouchableOpacity>
+
+      <View style={styles.menuBrand}>
+        <Image
+          source={require('@/assets/images/icon.png')}
+          style={styles.menuLogo}
+        />
+        <Text style={styles.menuBrandText}>Surprise Visit</Text>
+      </View>
+
+      <Text style={styles.menuCopy}>Where to today?</Text>
+
+      {homeLocation ? (
+        <TouchableOpacity onPress={onSettings} style={styles.menuHomePill}>
+          <MaterialIcons name="place" size={14} color="#0a84ff" />
+          <Text style={styles.menuHomePillText} numberOfLines={1}>
+            From: {homeName ?? `${homeLocation.lat.toFixed(3)}, ${homeLocation.lng.toFixed(3)}`}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.menuChipRow}
+      >
+        {CHIP_ORDER.map((chip) => {
+          const isActive = activeChip === chip;
+          return (
+            <TouchableOpacity
+              key={chip}
+              style={[styles.chip, isActive && styles.chipActive]}
+              onPress={() => onChipPress(chip)}
+            >
+              <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
+                {CATEGORY_LABELS[chip]}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      <TouchableOpacity
+        style={[styles.menuPrimaryBtn, isLoading && styles.menuPrimaryBtnLoading]}
+        onPress={onSurprisePress}
+        disabled={isLoading}
+      >
+        {isLoading ? (
+          <ActivityIndicator color="white" />
+        ) : (
+          <>
+            <MaterialIcons name="auto-awesome" size={20} color="white" />
+            <Text style={styles.menuPrimaryBtnText}>Surprise me</Text>
+          </>
+        )}
+      </TouchableOpacity>
+
+      <View style={styles.menuDivider} />
+
+      <View style={styles.menuLinks}>
+        <TouchableOpacity style={styles.menuLink} onPress={onHistory}>
+          <MaterialIcons name="history" size={20} color="#0a84ff" />
+          <Text style={styles.menuLinkText}>History</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.menuLink} onPress={onSettings}>
+          <MaterialIcons name="settings" size={20} color="#0a84ff" />
+          <Text style={styles.menuLinkText}>Settings</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+function Toast({
+  children,
+  tone,
+  onDismiss,
+  bottomInset,
+}: {
+  children: string;
+  tone: 'info' | 'error';
+  onDismiss: () => void;
+  bottomInset: number;
+}) {
+  return (
+    <View
+      style={[
+        styles.toast,
+        tone === 'error' && styles.toastError,
+        { bottom: 32 + bottomInset },
+      ]}
+    >
+      <Text style={styles.toastText}>{children}</Text>
+      <TouchableOpacity onPress={onDismiss} hitSlop={8}>
+        <Text style={styles.toastDismiss}>Dismiss</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -297,28 +438,10 @@ function emptyMessage(activeChip: PlaceTypeCategory | null): string {
   return "No places match the current filters near you. Try widening the radius in Settings or picking 'All' directions.";
 }
 
-function Toast({
-  children,
-  tone,
-  onDismiss,
-}: {
-  children: string;
-  tone: 'info' | 'error';
-  onDismiss: () => void;
-}) {
-  return (
-    <View style={[styles.toast, tone === 'error' && styles.toastError]}>
-      <Text style={styles.toastText}>{children}</Text>
-      <TouchableOpacity onPress={onDismiss} hitSlop={8}>
-        <Text style={styles.toastDismiss}>Dismiss</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
 function ResultCard({
   place,
   isSaved,
+  bottomInset,
   onHeart,
   onShare,
   onOpenMaps,
@@ -328,6 +451,7 @@ function ResultCard({
 }: {
   place: RankedPlace;
   isSaved: boolean;
+  bottomInset: number;
   onHeart: () => void;
   onShare: () => void;
   onOpenMaps: () => void;
@@ -351,7 +475,7 @@ function ResultCard({
   if (place.rating) metaParts.push(`★ ${place.rating.toFixed(1)}`);
 
   return (
-    <View style={styles.resultCard}>
+    <View style={[styles.resultCard, { bottom: 16 + bottomInset }]}>
       <View style={styles.photoContainer}>
         {photoUri ? (
           <Image
@@ -476,75 +600,124 @@ const styles = StyleSheet.create({
   },
   centerText: { fontSize: 15, color: '#333', textAlign: 'center' },
   errorText: { color: '#b00', fontSize: 13, textAlign: 'center' },
-  gear: {
+
+  header: {
     position: 'absolute',
-    top: 56,
-    right: 16,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 32,
-    right: 16,
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderRadius: 28,
-    backgroundColor: '#0a84ff',
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    minWidth: 140,
-    alignItems: 'center',
-  },
-  chipScroll: {
-    position: 'absolute',
+    top: 0,
     left: 0,
     right: 0,
-    bottom: 96,
-    maxHeight: 44,
-  },
-  chipScrollContent: {
-    paddingHorizontal: 12,
-    gap: 8,
+    backgroundColor: 'white',
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#0d192e',
+    zIndex: 10,
+    elevation: 4,
   },
+  headerLogo: { width: 28, height: 28, borderRadius: 6 },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: '#0d192e' },
+  headerSpacer: { flex: 1 },
+  headerMenuBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    zIndex: 20,
+  },
+
+  menuCard: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    top: '14%',
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 20,
+    gap: 14,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    zIndex: 30,
+  },
+  menuClose: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#eef0f3',
+    zIndex: 1,
+  },
+  menuBrand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginRight: 36,
+  },
+  menuLogo: { width: 36, height: 36, borderRadius: 8 },
+  menuBrandText: { fontSize: 20, fontWeight: '700', color: '#0d192e' },
+  menuCopy: { fontSize: 15, color: '#555' },
+  menuHomePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: '#e9f1ff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    maxWidth: '100%',
+  },
+  menuHomePillText: { fontSize: 12, color: '#0d192e', fontWeight: '500' },
+  menuChipRow: { gap: 8, paddingVertical: 2 },
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
+    backgroundColor: '#eef0f3',
   },
-  chipActive: {
+  chipActive: { backgroundColor: '#0a84ff' },
+  chipText: { fontSize: 13, color: '#333', fontWeight: '500' },
+  chipTextActive: { color: 'white' },
+  menuPrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     backgroundColor: '#0a84ff',
+    paddingVertical: 14,
+    borderRadius: 12,
+    minHeight: 48,
   },
-  chipText: {
-    fontSize: 14,
-    color: '#222',
-    fontWeight: '500',
+  menuPrimaryBtnLoading: { opacity: 0.75 },
+  menuPrimaryBtnText: { color: 'white', fontSize: 16, fontWeight: '700' },
+  menuDivider: { height: StyleSheet.hairlineWidth, backgroundColor: '#e0e3e8' },
+  menuLinks: { flexDirection: 'row', gap: 8 },
+  menuLink: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#f4f6fa',
   },
-  chipTextActive: {
-    color: 'white',
-    fontWeight: '600',
-  },
-  fabLoading: { opacity: 0.75 },
-  fabText: { color: 'white', fontSize: 16, fontWeight: '600' },
+  menuLinkText: { fontSize: 14, color: '#0a84ff', fontWeight: '600' },
+
   toast: {
     position: 'absolute',
     left: 16,
@@ -554,10 +727,12 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 12,
     gap: 8,
+    zIndex: 25,
   },
   toastError: { backgroundColor: 'rgba(139,0,0,0.92)' },
   toastText: { color: 'white', fontSize: 14, lineHeight: 20 },
   toastDismiss: { color: '#9cf', fontSize: 14, fontWeight: '600' },
+
   resultCard: {
     position: 'absolute',
     left: 12,
@@ -571,6 +746,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     overflow: 'hidden',
+    zIndex: 25,
   },
   photoContainer: {
     width: '100%',
@@ -632,12 +808,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
     backgroundColor: '#0a84ff',
     paddingVertical: 14,
     borderRadius: 10,
-    gap: 8,
   },
   againBtnText: { color: 'white', fontWeight: '600', fontSize: 15 },
+
   visitedDot: {
     width: 12,
     height: 12,
@@ -646,23 +823,4 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'white',
   },
-  homePill: {
-    position: 'absolute',
-    top: 56,
-    left: 16,
-    maxWidth: 220,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-  },
-  homePillText: { fontSize: 12, color: '#222', fontWeight: '500' },
 });
